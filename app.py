@@ -1,12 +1,14 @@
 import os
+import json
 from flask import Flask, request, jsonify
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 
 app = Flask(__name__)
 
-# Initialize Firebase Admin SDK
-cred = credentials.Certificate("serviceAccountKey.json")
+# Load Firebase key from Render Environment Variable
+firebase_key = json.loads(os.environ["FIREBASE_KEY"])
+cred = credentials.Certificate(firebase_key)
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -18,7 +20,11 @@ def home():
 @app.route("/secure-data", methods=["POST"])
 def secure_data():
     try:
-        id_token = request.headers.get("Authorization").split("Bearer ")[1]
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
         decoded_token = auth.verify_id_token(id_token)
 
         uid = decoded_token["uid"]
