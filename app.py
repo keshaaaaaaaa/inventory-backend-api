@@ -13,6 +13,51 @@ firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
+@app.route("/export-data", methods=["GET"])
+def export_data():
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token["uid"]
+
+        # Optional: allow only IT role
+        user_doc = db.collection("users_auth").document(uid).get()
+        if not user_doc.exists:
+            return jsonify({"error": "User not found"}), 403
+
+        role = user_doc.to_dict().get("role")
+        if role != "IT":
+            return jsonify({"error": "Not authorized"}), 403
+
+        users_ref = db.collection("users").stream()
+        devices_ref = db.collection("devices").stream()
+
+        users = {doc.id: doc.to_dict() for doc in users_ref}
+
+        devices = []
+        for doc in devices_ref:
+            d = doc.to_dict()
+            device_id = doc.id
+            user_id = d.get("user_id")
+
+            user = users.get(user_id, {})
+
+            devices.append({
+                "device_id": device_id,
+                "user_id": user_id,
+                "user": user,
+                "device_data": d
+            })
+
+        return jsonify(devices)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
+
 @app.route("/")
 def home():
     return "Backend is running"
