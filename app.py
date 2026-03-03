@@ -41,6 +41,10 @@ def export_data():
         devices = []
         for doc in devices_ref:
             d = doc.to_dict()
+
+            if "date_added" in d and d["date_added"]:
+                d["date_added"] = d["date_added"].isoformat()
+    
             device_id = doc.id
             user_id = d.get("user_id")
 
