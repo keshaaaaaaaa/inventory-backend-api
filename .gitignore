@@ -1,2 +1,14 @@
+# Firebase
 serviceAccountKey.json
+
+# Python
 __pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.env
+
+# Logs
+*.log
+error_log.txt
