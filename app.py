@@ -50,16 +50,13 @@ def export_data():
 
             user = users.get(user_id, {})
 
-            device_info = d.get("device_info", {})
+            device_data = d.get("device_info") or d
 
             devices.append({
                 "device_id": device_id,
                 "user_id": user_id,
                 "user": user,
-                "device_data": {
-                    **device_info,
-                    "date_added": d.get("date_added")
-                }
+                "device_data": device_data
             })
         return jsonify(devices)
 
