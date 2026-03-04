@@ -130,12 +130,30 @@ def submit_device():
         })
 
         # Save device info
-        db.collection("devices").add({
-            "user_id": user_ref.id,
-            "device_info": data.get("device_info"),
-            "date_added": firestore.SERVER_TIMESTAMP
-        })
+        device_info = data.get("device_info") or {}
+        serial = device_info.get("serial_number")
 
+        if not serial:
+            return jsonify({"error": "Missing serial number"}), 400
+
+        device_ref = db.collection("devices").document(serial)
+
+        existing_device = device_ref.get()
+
+        if existing_device.exists:
+            # Update existing device
+            device_ref.update({
+                "user_id": user_ref.id,
+                "device_info": device_info,
+                "date_updated": firestore.SERVER_TIMESTAMP
+            })
+        else:
+            # Create new device
+            device_ref.set({
+                "user_id": user_ref.id,
+                "device_info": device_info,
+                "date_added": firestore.SERVER_TIMESTAMP
+            })
         return jsonify({"status": "success"})
 
     except Exception as e:
