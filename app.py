@@ -111,11 +111,6 @@ def submit_device():
         if not user_doc.exists:
             return jsonify({"error": "User not found"}), 403
 
-        role = user_doc.to_dict().get("role")
-
-        if role != "EMPLOYEE":
-            return jsonify({"error": "Only employees can submit"}), 403
-
         data = request.json
 
         # Create user record
