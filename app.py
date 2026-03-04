@@ -140,6 +140,115 @@ def submit_device():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 401
+    
+# ================= DEPARTMENT ROUTING (START) =================
+
+@app.route("/departments", methods=["GET"])
+def get_departments():
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token["uid"]
+
+        user_doc = db.collection("users_auth").document(uid).get()
+        if not user_doc.exists:
+            return jsonify({"error": "User not found"}), 403
+
+        role = user_doc.to_dict().get("role")
+        if role != "IT":
+            return jsonify({"error": "Not authorized"}), 403
+
+        departments = []
+        docs = db.collection("departments").stream()
+
+        for doc in docs:
+            d = doc.to_dict()
+            departments.append({
+                "id": doc.id,
+                "name": d.get("name"),
+                "acronym": d.get("acronym")
+            })
+
+        return jsonify(departments)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
+    
+@app.route("/departments", methods=["POST"])
+def add_department():
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token["uid"]
+
+        user_doc = db.collection("users_auth").document(uid).get()
+        if not user_doc.exists:
+            return jsonify({"error": "User not found"}), 403
+
+        role = user_doc.to_dict().get("role")
+        if role != "IT":
+            return jsonify({"error": "Not authorized"}), 403
+
+        data = request.json
+        name = data.get("name")
+        acronym = data.get("acronym")
+
+        if not name or not acronym:
+            return jsonify({"error": "Missing fields"}), 400
+
+        # Prevent duplicates
+        existing = db.collection("departments")\
+            .where("name", "==", name)\
+            .stream()
+
+        for _ in existing:
+            return jsonify({"error": "Department already exists"}), 400
+
+        db.collection("departments").add({
+            "name": name,
+            "acronym": acronym
+        })
+
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
+
+@app.route("/departments/<dept_id>", methods=["DELETE"])
+def delete_department(dept_id):
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token["uid"]
+
+        user_doc = db.collection("users_auth").document(uid).get()
+        if not user_doc.exists:
+            return jsonify({"error": "User not found"}), 403
+
+        role = user_doc.to_dict().get("role")
+        if role != "IT":
+            return jsonify({"error": "Not authorized"}), 403
+
+        db.collection("departments").document(dept_id).delete()
+
+        return jsonify({"status": "deleted"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 401
+    
+# ================= DEPARTMENT ROUTING (END) =================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
