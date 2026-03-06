@@ -123,17 +123,28 @@ def submit_device():
         middlename = data.get("middlename", "").strip().lower()
         lastname = data.get("lastname", "").strip().lower()
         contactnum = data.get("contactnum", "").strip()
+
+        # clean phone number
         contactnum = ''.join(filter(str.isdigit, contactnum))
 
-        # Generate deterministic user_id
-        user_id = f"{firstname}_{lastname}_{contactnum}"
+        # Check if user already exists
+        existing_users = db.collection("users")\
+            .where("firstname", "==", firstname)\
+            .where("middlename", "==", middlename)\
+            .where("lastname", "==", lastname)\
+            .where("contactnum", "==", contactnum)\
+            .limit(1)\
+            .stream()
 
-        user_ref = db.collection("users").document(user_id)
+        user_ref = None
 
-        existing_user = user_ref.get()
+        for u in existing_users:
+            user_ref = db.collection("users").document(u.id)
+            break
 
-        # If user doesn't exist, create it
-        if not existing_user.exists:
+        # If user doesn't exist, create one
+        if user_ref is None:
+            user_ref = db.collection("users").document()
             user_ref.set({
                 "firstname": firstname,
                 "middlename": middlename,
