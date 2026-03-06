@@ -64,7 +64,7 @@ def export_data():
         return jsonify(devices)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 401
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/")
 def home():
