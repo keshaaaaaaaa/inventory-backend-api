@@ -50,7 +50,10 @@ def export_data():
 
             user = users.get(user_id, {})
 
-            device_data = d.get("device_info") or d
+            device_data = d.get("device_info") or {}
+
+            device_data["date_added"] = d.get("date_added")
+            device_data["date_updated"] = d.get("date_updated")
 
             devices.append({
                 "device_id": device_id,
