@@ -119,16 +119,29 @@ def submit_device():
 
         data = request.json
 
-        # Create user record
-        user_ref = db.collection("users").document()
-        user_ref.set({
-            "firstname": data.get("firstname"),
-            "middlename": data.get("middlename"),
-            "lastname": data.get("lastname"),
-            "contactnum": data.get("contactnum"),
-            "department": data.get("department"),
-            "created_at": firestore.SERVER_TIMESTAMP
-        })
+        firstname = data.get("firstname", "").strip().lower()
+        middlename = data.get("middlename", "").strip().lower()
+        lastname = data.get("lastname", "").strip().lower()
+        contactnum = data.get("contactnum", "").strip()
+        contactnum = ''.join(filter(str.isdigit, contactnum))
+
+        # Generate deterministic user_id
+        user_id = f"{firstname}_{lastname}_{contactnum}"
+
+        user_ref = db.collection("users").document(user_id)
+
+        existing_user = user_ref.get()
+
+        # If user doesn't exist, create it
+        if not existing_user.exists:
+            user_ref.set({
+                "firstname": firstname,
+                "middlename": middlename,
+                "lastname": lastname,
+                "contactnum": contactnum,
+                "department": data.get("department"),
+                "created_at": firestore.SERVER_TIMESTAMP
+            })
 
         # Save device info
         device_info = data.get("device_info") or {}
