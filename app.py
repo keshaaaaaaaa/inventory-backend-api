@@ -202,7 +202,7 @@ def get_departments():
             return jsonify({"error": "User not found"}), 403
 
         role = user_doc.to_dict().get("role")
-        if role not in ["IT", "EMPLOYEE"]:
+        if role != "IT":
             return jsonify({"error": "Not authorized"}), 403
 
         departments = []
