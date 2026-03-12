@@ -150,7 +150,7 @@ def submit_device():
                 "middlename": middlename,
                 "lastname": lastname,
                 "contactnum": contactnum,
-                "department": data.get("department_id"),
+                "department": data.get("department"),
                 "created_at": firestore.SERVER_TIMESTAMP
             })
 
@@ -202,7 +202,7 @@ def get_departments():
             return jsonify({"error": "User not found"}), 403
 
         role = user_doc.to_dict().get("role")
-        if role != "IT":
+        if role not in ["IT", "EMPLOYEE"]:
             return jsonify({"error": "Not authorized"}), 403
 
         departments = []
