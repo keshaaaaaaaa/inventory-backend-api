@@ -184,6 +184,44 @@ def submit_device():
     except Exception as e:
         return jsonify({"error": str(e)}), 401
     
+@app.route("/users", methods=["GET"])
+def get_users():
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Missing Authorization header"}), 401
+
+        id_token = auth_header.split("Bearer ")[1]
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token["uid"]
+
+        user_doc = db.collection("users_auth").document(uid).get()
+        if not user_doc.exists:
+            return jsonify({"error": "User not found"}), 403
+
+        role = user_doc.to_dict().get("role")
+        if role != "IT":
+            return jsonify({"error": "Not authorized"}), 403
+
+        users = []
+
+        docs = db.collection("users").stream()
+
+        for doc in docs:
+            d = doc.to_dict()
+
+            full_name = f"{d.get('firstname','')} {d.get('middlename','')} {d.get('lastname','')}"
+
+            users.append({
+                "name": full_name.lower().strip(),
+                "department": d.get("department","")
+            })
+
+        return jsonify(users)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 # ================= DEPARTMENT ROUTING (START) =================
 
 @app.route("/departments", methods=["GET"])
