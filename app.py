@@ -210,7 +210,7 @@ def get_users():
         for doc in docs:
             d = doc.to_dict()
 
-            full_name = f"{d.get('firstname','')} {d.get('middlename','')} {d.get('lastname','')}"
+            full_name = f"{d.get('firstname','')} {d.get('lastname','')}"
 
             users.append({
                 "name": full_name.lower().strip(),
