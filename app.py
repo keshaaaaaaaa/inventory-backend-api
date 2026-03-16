@@ -6,25 +6,43 @@ from firebase_admin import credentials, firestore, auth
 
 app = Flask(__name__)
 
-# Load Firebase key from Render Environment Variable
-firebase_key = json.loads(os.environ["FIREBASE_KEY"])
-cred = credentials.Certificate(firebase_key)
-firebase_admin.initialize_app(cred)
+_db = None
 
-db = firestore.client()
+def get_db():
+    global _db
+
+    if _db is None:
+        firebase_key = json.loads(os.environ["FIREBASE_KEY"])
+
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(firebase_key)
+            firebase_admin.initialize_app(cred)
+
+        _db = firestore.client()
+
+    return _db
+
+@app.route("/")
+def home():
+    return "Backend is running"
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/export-data", methods=["GET"])
 def export_data():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
 
-        # Optional: allow only IT role
+        db = get_db()
+
         user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
             return jsonify({"error": "User not found"}), 403
@@ -44,14 +62,15 @@ def export_data():
 
             if "date_added" in d and d["date_added"]:
                 d["date_added"] = d["date_added"].isoformat()
-    
+
+            if "date_updated" in d and d["date_updated"]:
+                d["date_updated"] = d["date_updated"].isoformat()
+
             device_id = doc.id
             user_id = d.get("user_id")
-
             user = users.get(user_id, {})
 
             device_data = d.get("device_info")
-
             if not device_data:
                 device_data = d.copy()
 
@@ -64,29 +83,26 @@ def export_data():
                 "user": user,
                 "device_data": device_data
             })
+
         return jsonify(devices)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/")
-def home():
-    return "Backend is running"
-
 @app.route("/secure-data", methods=["POST"])
 def secure_data():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
-
         uid = decoded_token["uid"]
 
-        user_doc = db.collection("users_auth").document(uid).get()
+        db = get_db()
 
+        user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
             return jsonify({"error": "User not found"}), 403
 
@@ -105,35 +121,34 @@ def secure_data():
 def submit_device():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
 
-        user_doc = db.collection("users_auth").document(uid).get()
+        db = get_db()
 
+        user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
             return jsonify({"error": "User not found"}), 403
 
-        data = request.json
+        data = request.json or {}
 
         firstname = data.get("firstname", "").strip().lower()
         middlename = data.get("middlename", "").strip().lower()
         lastname = data.get("lastname", "").strip().lower()
         contactnum = data.get("contactnum", "").strip()
 
-        # clean phone number
-        contactnum = ''.join(filter(str.isdigit, contactnum))
+        contactnum = "".join(filter(str.isdigit, contactnum))
 
-        # Check if user already exists
-        existing_users = db.collection("users")\
-            .where("firstname", "==", firstname)\
-            .where("middlename", "==", middlename)\
-            .where("lastname", "==", lastname)\
-            .where("contactnum", "==", contactnum)\
-            .limit(1)\
+        existing_users = db.collection("users") \
+            .where("firstname", "==", firstname) \
+            .where("middlename", "==", middlename) \
+            .where("lastname", "==", lastname) \
+            .where("contactnum", "==", contactnum) \
+            .limit(1) \
             .stream()
 
         user_ref = None
@@ -142,7 +157,6 @@ def submit_device():
             user_ref = db.collection("users").document(u.id)
             break
 
-        # If user doesn't exist, create one
         if user_ref is None:
             user_ref = db.collection("users").document()
             user_ref.set({
@@ -154,7 +168,6 @@ def submit_device():
                 "created_at": firestore.SERVER_TIMESTAMP
             })
 
-        # Save device info
         device_info = data.get("device_info") or {}
         serial = device_info.get("serial_number")
 
@@ -162,38 +175,38 @@ def submit_device():
             return jsonify({"error": "Missing serial number"}), 400
 
         device_ref = db.collection("devices").document(serial)
-
         existing_device = device_ref.get()
 
         if existing_device.exists:
-            # Update existing device
             device_ref.update({
                 "user_id": user_ref.id,
                 "device_info": device_info,
                 "date_updated": firestore.SERVER_TIMESTAMP
             })
         else:
-            # Create new device
             device_ref.set({
                 "user_id": user_ref.id,
                 "device_info": device_info,
                 "date_added": firestore.SERVER_TIMESTAMP
             })
+
         return jsonify({"status": "success"})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 401
-    
+
 @app.route("/users", methods=["GET"])
 def get_users():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
+
+        db = get_db()
 
         user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
@@ -204,36 +217,34 @@ def get_users():
             return jsonify({"error": "Not authorized"}), 403
 
         users = []
-
         docs = db.collection("users").stream()
 
         for doc in docs:
             d = doc.to_dict()
-
-            full_name = f"{d.get('firstname','')} {d.get('lastname','')}"
+            full_name = f"{d.get('firstname', '')} {d.get('lastname', '')}"
 
             users.append({
                 "name": full_name.lower().strip(),
-                "department": d.get("department","")
+                "department": d.get("department", "")
             })
 
         return jsonify(users)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-# ================= DEPARTMENT ROUTING (START) =================
 
 @app.route("/departments", methods=["GET"])
 def get_departments():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
+
+        db = get_db()
 
         user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
@@ -258,17 +269,19 @@ def get_departments():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 401
-    
+
 @app.route("/departments", methods=["POST"])
 def add_department():
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
+
+        db = get_db()
 
         user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
@@ -278,16 +291,15 @@ def add_department():
         if role != "IT":
             return jsonify({"error": "Not authorized"}), 403
 
-        data = request.json
+        data = request.json or {}
         name = data.get("name")
         acronym = data.get("acronym")
 
         if not name or not acronym:
             return jsonify({"error": "Missing fields"}), 400
 
-        # Prevent duplicates
-        existing = db.collection("departments")\
-            .where("name", "==", name)\
+        existing = db.collection("departments") \
+            .where("name", "==", name) \
             .stream()
 
         for _ in existing:
@@ -307,12 +319,14 @@ def add_department():
 def delete_department(dept_id):
     try:
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            return jsonify({"error": "Missing Authorization header"}), 401
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-        id_token = auth_header.split("Bearer ")[1]
+        id_token = auth_header.removeprefix("Bearer ").strip()
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token["uid"]
+
+        db = get_db()
 
         user_doc = db.collection("users_auth").document(uid).get()
         if not user_doc.exists:
@@ -328,8 +342,7 @@ def delete_department(dept_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 401
-    
-# ================= DEPARTMENT ROUTING (END) =================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
